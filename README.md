@@ -12,6 +12,7 @@ overlaid on the page) in `image_dir/vis/`.
 sample/      input PDFs
 output/      extracted .txt files (one per PDF)
 image_dir/   PaddleOCR debug visualizations (vis/ subfolder, one .jpg per OCR'd page)
+models/      PaddleOCR model + font cache (downloaded on first run, see below)
 main.py      extraction script
 ```
 
@@ -66,9 +67,33 @@ python main.py
 ```
 
 Drop input PDFs into `sample/` before running. Extracted text lands in
-`output/`, debug visualizations in `image_dir/vis/`. On first run,
-PaddleOCR downloads the PP-OCRv5 detection / recognition / text-line
-orientation models and caches them under `~/.paddlex/official_models/`.
+`output/`, debug visualizations in `image_dir/vis/`.
+
+### Model cache (downloaded on first run)
+The PP-OCRv5 model weights are **not** committed to the repo. On the first
+run PaddleOCR downloads them into the project-local cache at `models/`, so
+that first run needs internet access; every later run reuses the cache and
+runs with no network. `main.py` points PaddleX at this folder by setting
+`PADDLE_PDX_CACHE_HOME` to `models/` before importing PaddleOCR.
+
+After the first run, `models/official_models/` holds the three models this
+pipeline loads:
+
+| Model | Role |
+| --- | --- |
+| `PP-OCRv5_server_det` | text detection |
+| `en_PP-OCRv5_mobile_rec` | English recognition (`OCR_LANG="en"`) |
+| `PP-LCNet_x1_0_textline_ori` | text-line orientation |
+
+`models/fonts/` holds the fonts PaddleOCR uses to render the debug
+visualizations. Everything under `models/` — the downloaded weights plus the
+volatile `func_ret/`, `locks/`, `temp/` runtime caches — is git-ignored.
+
+To use a different cache location instead (e.g. the default `~/.paddlex`),
+set `PADDLE_PDX_CACHE_HOME` in the environment before running; the in-script
+default only applies when the variable is unset. Switching `OCR_LANG` to
+another language downloads that language's recognizer into
+`models/official_models/` on the next run (internet required once).
 
 ### WSL note
 On WSL the CUDA driver library lives in a nonstandard path. If you see

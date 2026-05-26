@@ -10,14 +10,22 @@ This is the PaddleOCR port of the MMOCR pipeline described in README.md.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
-import fitz  # PyMuPDF
-import numpy as np
-
 # --- Configuration ----------------------------------------------------------
 ROOT = Path(__file__).resolve().parent
+
+# Use a project-local model cache instead of ~/.paddlex: PaddleOCR downloads
+# the weights here on first run, then later runs reuse them offline. Must be
+# set before paddle/paddleocr is imported. Override PADDLE_PDX_CACHE_HOME to
+# use a different cache.
+os.environ.setdefault("PADDLE_PDX_CACHE_HOME", str(ROOT / "models"))
+
+import fitz  # PyMuPDF  # noqa: E402
+import numpy as np  # noqa: E402
+
 SAMPLE_DIR = ROOT / "sample"
 OUTPUT_DIR = ROOT / "output"
 VIS_DIR = ROOT / "image_dir" / "vis"

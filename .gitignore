@@ -4,11 +4,19 @@
 /.venv/*
 
 /notes/*
+/models/*
 
 /output/*
 !/output/.gitkeep
 
 /image_dir/*
+
+# Model weights/fonts download into /models on first run (cached locally for
+# later offline runs) and are not committed. /models/* above already ignores
+# them; these list PaddleX's volatile runtime caches explicitly.
+/models/func_ret/
+/models/locks/
+/models/temp/
 
 /.claude/*
 GIT_SETUP.md
