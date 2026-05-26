@@ -1,0 +1,16 @@
+# PDF parsing / rasterization
+PyMuPDF>=1.27.1
+numpy>=1.26,<2.3
+
+# OCR pipeline (PP-OCRv5)
+paddleocr>=3.0.0
+
+# GPU runtime for the RTX 5080 (Blackwell, sm_120 / CUDA 12.x).
+# paddlepaddle-gpu is NOT on PyPI for CUDA builds -- install it from the
+# Paddle index that matches your CUDA toolkit, e.g.:
+#
+#   pip install paddlepaddle-gpu==3.0.0 \
+#       -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
+#
+# (use the cu128/cu129 index instead if that is what your driver/toolkit
+# supports). The Blackwell RTX 5080 needs a CUDA 12.6+ build.

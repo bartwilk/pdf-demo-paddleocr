@@ -1,0 +1,17 @@
+/sample/*
+!/sample/.gitkeep
+
+/.venv/*
+
+/notes/*
+
+/output/*
+!/output/.gitkeep
+
+/image_dir/*
+
+/.claude/*
+GIT_SETUP.md
+
+__pycache__/
+*.pyc
