@@ -1,11 +1,12 @@
-"""Extract text from PDFs in sample/, writing one .txt per PDF to output/.
+"""Extract text from PDFs in sample/, writing one .md per PDF to output/.
 
 Digital pages (native text layer / fillable form fields) are read directly
-with PyMuPDF. Scanned-image pages are rasterized and OCR'd with PaddleOCR
-(PP-OCRv5) on the GPU. OCR'd pages also get an annotated debug image in
-image_dir/vis/.
+with PyMuPDF. Scanned-image pages are rasterized and parsed with the
+PaddleOCR-VL-1.5 vision-language pipeline on the GPU, which emits structured
+markdown (reading order, tables, formulas) directly. OCR'd pages also get an
+annotated debug image in image_dir/vis/.
 
-This is the PaddleOCR port of the MMOCR pipeline described in README.md.
+See README.md for the pipeline overview.
 """
 
 from __future__ import annotations
@@ -32,7 +33,6 @@ VIS_DIR = ROOT / "image_dir" / "vis"
 
 NATIVE_TEXT_MIN_CHARS = 40   # min non-whitespace chars to trust the text layer
 OCR_DPI = 300                # rasterization DPI for OCR'd pages
-OCR_LANG = "en"              # PaddleOCR recognition language
 SAVE_VIS = True              # write annotated JPGs for OCR'd pages
 
 # Set lazily by get_ocr() so the model loads only if an OCR page is hit.
@@ -58,84 +58,45 @@ def assert_gpu() -> None:
 
 
 def get_ocr():
-    """Build the PaddleOCR pipeline once, pinned to GPU."""
+    """Build the PaddleOCR-VL-1.5 document-parsing pipeline once, pinned to GPU."""
     global _OCR
     if _OCR is None:
-        from paddleocr import PaddleOCR
+        from paddleocr import PaddleOCRVL
 
-        _OCR = PaddleOCR(
-            lang=OCR_LANG,
-            device="gpu:0",
-            use_doc_orientation_classify=False,  # pages are already upright
-            use_doc_unwarping=False,
-            use_textline_orientation=True,       # handle rotated text lines
-        )
+        # VL is multilingual (auto-detected) and reconstructs reading order,
+        # tables and formulas itself, so the classic lang/orientation knobs
+        # and our manual reading_order() are no longer needed. pipeline_version
+        # "v1.5" is the current default; pin it explicitly for reproducibility.
+        _OCR = PaddleOCRVL(device="gpu:0", pipeline_version="v1.5")
     return _OCR
 
 
-def reading_order(items: list[tuple[str, np.ndarray]]) -> str:
-    """Re-order recognized words into top-to-bottom, left-to-right text.
-
-    `items` is a list of (text, polygon) pairs, where polygon is an array of
-    corner points [[x, y], ...]. Words are grouped into lines by vertical
-    overlap, then sorted left-to-right within each line.
-    """
-    boxes = []
-    for text, poly in items:
-        poly = np.asarray(poly, dtype=float)
-        xs, ys = poly[:, 0], poly[:, 1]
-        boxes.append(
-            {
-                "text": text,
-                "x": float(xs.min()),
-                "cy": float((ys.min() + ys.max()) / 2),
-                "h": float(ys.max() - ys.min()),
-            }
-        )
-    if not boxes:
-        return ""
-
-    median_h = float(np.median([b["h"] for b in boxes]))
-    thresh = max(median_h * 0.6, 1.0)
-
-    boxes.sort(key=lambda b: b["cy"])
-    lines: list[list[dict]] = [[boxes[0]]]
-    ref = boxes[0]["cy"]
-    for b in boxes[1:]:
-        if abs(b["cy"] - ref) <= thresh:
-            lines[-1].append(b)
-        else:
-            lines.append([b])
-        ref = sum(x["cy"] for x in lines[-1]) / len(lines[-1])
-
-    out_lines = []
-    for line in lines:
-        line.sort(key=lambda b: b["x"])
-        out_lines.append(" ".join(b["text"] for b in line))
-    return "\n".join(out_lines)
-
-
 def ocr_page(img_rgb: np.ndarray, vis_path: Path | None) -> str:
-    """Run PaddleOCR on a rasterized page; return text in reading order."""
+    """Parse a rasterized page with PaddleOCR-VL; return structured markdown."""
     ocr = get_ocr()
-    # PaddleOCR consumes BGR ndarrays (cv2 convention).
-    results = ocr.predict(img_rgb[:, :, ::-1])
+    # PaddleX pipelines consume BGR ndarrays (cv2 convention).
+    results = list(ocr.predict(img_rgb[:, :, ::-1]))
     if not results:
         return ""
 
     res = results[0]
-    texts = res.get("rec_texts", [])
-    polys = res.get("rec_polys")
-    if polys is None:
-        polys = res.get("dt_polys", [])
 
     if SAVE_VIS and vis_path is not None:
         vis_path.parent.mkdir(parents=True, exist_ok=True)
-        # res.img is {"ocr_res_img": PIL.Image}; save it under our own
-        # basename rather than PaddleOCR's auto-generated timestamp name.
-        res.img["ocr_res_img"].convert("RGB").save(vis_path)
+        # res.img holds the pipeline's visualizations keyed by stage
+        # (layout_det_res, overall_ocr_res, ...). Save the OCR overlay if
+        # present, else whichever image the pipeline produced, under our own
+        # basename rather than the auto-generated timestamp name.
+        imgs = res.img or {}
+        pil = imgs.get("overall_ocr_res") or next(iter(imgs.values()), None)
+        if pil is not None:
+            pil.convert("RGB").save(vis_path)
 
-    return reading_order(list(zip(texts, polys)))
+    # res.markdown carries the reading-ordered markdown for the page.
+    md = res.markdown
+    if isinstance(md, dict):
+        return (md.get("markdown_texts") or "").rstrip()
+    return (getattr(md, "markdown_texts", None) or str(md)).rstrip()
 
 
 def extract_pdf(pdf_path: Path) -> str:
@@ -162,8 +123,8 @@ def extract_pdf(pdf_path: Path) -> str:
             vis_path = VIS_DIR / f"{pdf_path.stem}_p{i:03d}.jpg"
             body = ocr_page(img, vis_path)
 
-        header = f"--- Page {i} of {n_pages}  [{mode}] ---"
-        chunks.append(f"{header}\n{body}".rstrip())
+        header = f"## Page {i} of {n_pages} [{mode}]"
+        chunks.append(f"{header}\n\n{body}".rstrip())
         print(f"  page {i}/{n_pages}: {mode}", flush=True)
 
     doc.close()
@@ -181,7 +142,7 @@ def main() -> None:
     for pdf_path in pdfs:
         print(f"[pdf] {pdf_path.name}", flush=True)
         text = extract_pdf(pdf_path)
-        out_path = OUTPUT_DIR / f"{pdf_path.stem}.txt"
+        out_path = OUTPUT_DIR / f"{pdf_path.stem}.md"
         out_path.write_text(text, encoding="utf-8")
         print(f"  -> {out_path.relative_to(ROOT)}", flush=True)
 
