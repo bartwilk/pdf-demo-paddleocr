@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 from pathlib import Path
 
 # --- Configuration ----------------------------------------------------------
@@ -106,6 +107,7 @@ def extract_pdf(pdf_path: Path) -> str:
     chunks = []
 
     for i, page in enumerate(doc, start=1):
+        t0 = time.perf_counter()
         native = page.get_text("text")
         if len(native.split()) and len("".join(native.split())) >= NATIVE_TEXT_MIN_CHARS:
             mode = "text-layer"
@@ -125,7 +127,8 @@ def extract_pdf(pdf_path: Path) -> str:
 
         header = f"## Page {i} of {n_pages} [{mode}]"
         chunks.append(f"{header}\n\n{body}".rstrip())
-        print(f"  page {i}/{n_pages}: {mode}", flush=True)
+        elapsed = time.perf_counter() - t0
+        print(f"  page {i}/{n_pages}: {mode} ({elapsed:.2f}s)", flush=True)
 
     doc.close()
     return "\n\n".join(chunks) + "\n"
