@@ -1,3 +1,16 @@
+# System (non-pip) dependency: the libgomp1 package (GNU OpenMP runtime).
+# PaddlePaddle's native core links against libgomp.so.1; if it is missing,
+# `import paddle` fails with
+#   ImportError: libgomp.so.1: cannot open shared object file
+# pip cannot install it -- use the OS package manager, e.g.:
+#   sudo apt-get install -y libgomp1        # Debian/Ubuntu/WSL
+# verify with: ldconfig -p | grep libgomp
+#
+# Optional system package: ccache. PaddlePaddle JIT-compiles some custom
+# CUDA/C++ ops at runtime and uses ccache to speed up recompiles. Without it
+# you get a harmless "UserWarning: No ccache found ..." (nothing breaks).
+#   sudo apt-get install -y ccache          # Debian/Ubuntu/WSL
+
 # PDF parsing / rasterization
 PyMuPDF>=1.27.1
 numpy>=1.26,<2.3

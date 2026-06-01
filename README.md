@@ -42,6 +42,25 @@ For OCR'd pages, the pipeline's annotated visualization is written to
   PaddleOCR-VL-1.5 needs compute capability >= 7.0 and CUDA 11.8+.
 - Python 3.11, PyMuPDF 1.27, `paddleocr[doc-parser]` 3.2.1+,
   paddlepaddle-gpu 3.2.1+. Pinned versions are in `requirements.txt`.
+- The `libgomp1` system package (GNU OpenMP runtime). PaddlePaddle's native
+  core links against `libgomp.so.1`; without it `import paddle` fails with
+  `ImportError: libgomp.so.1: cannot open shared object file`. Install it with
+  your distro's package manager (it is not a pip dependency):
+
+  ```bash
+  sudo apt-get update && sudo apt-get install -y libgomp1   # Debian/Ubuntu/WSL
+  # check it is visible to the loader:
+  ldconfig -p | grep libgomp
+  ```
+- `ccache` (optional). PaddlePaddle JIT-compiles some custom CUDA/C++ ops at
+  runtime and uses `ccache` to cache recompiles. Without it you get a harmless
+  `UserWarning: No ccache found ...` and slower recompiles -- nothing breaks.
+  Install it to silence the warning:
+
+  ```bash
+  sudo apt-get install -y ccache   # Debian/Ubuntu/WSL
+  which ccache && ccache --version
+  ```
 
 `paddlepaddle-gpu` is **not** installable from plain PyPI -- the GPU build
 must come from Paddle's CUDA index, matched to your CUDA toolkit. A
@@ -59,6 +78,10 @@ Use the `cu126` index instead for older (pre-Blackwell) GPUs.
 From the project root, install dependencies once:
 
 ```bash
+# system library PaddlePaddle's native core needs, plus optional ccache
+# to silence the "No ccache found" recompile warning (see Requirements)
+sudo apt-get update && sudo apt-get install -y libgomp1 ccache
+
 pip install -r requirements.txt
 pip install paddlepaddle-gpu==3.3.1 \
   -i https://www.paddlepaddle.org.cn/packages/stable/cu129/
