@@ -33,6 +33,7 @@ OUTPUT_DIR = ROOT / "output"
 VIS_DIR = ROOT / "image_dir" / "vis"
 
 NATIVE_TEXT_MIN_CHARS = 40   # min non-whitespace chars to trust the text layer
+IMG_COVER_MIN = 0.05         # min page-area fraction of raster images to force OCR
 OCR_DPI = 300                # rasterization DPI for OCR'd pages
 SAVE_VIS = True              # write annotated JPGs for OCR'd pages
 
@@ -100,6 +101,27 @@ def ocr_page(img_rgb: np.ndarray, vis_path: Path | None) -> str:
     return (getattr(md, "markdown_texts", None) or str(md)).rstrip()
 
 
+def image_coverage(page: "fitz.Page") -> float:
+    """Fraction of the page area covered by embedded raster images.
+
+    A page with a real text layer can still hide most of its content inside a
+    scanned-form image or a grid of photos (the text layer is just a footer or
+    a few field labels). Overlapping placements may push the sum past 1.0; we
+    only need it relative to IMG_COVER_MIN, so that is fine.
+    """
+    page_area = page.rect.width * page.rect.height
+    if page_area <= 0:
+        return 0.0
+    covered = 0.0
+    for img in page.get_images(full=True):
+        try:
+            for r in page.get_image_rects(img[0]):
+                covered += (r.width * r.height) / page_area
+        except Exception:
+            continue
+    return covered
+
+
 def extract_pdf(pdf_path: Path) -> str:
     """Extract text from every page of one PDF, with per-page headers."""
     doc = fitz.open(pdf_path)
@@ -109,7 +131,17 @@ def extract_pdf(pdf_path: Path) -> str:
     for i, page in enumerate(doc, start=1):
         t0 = time.perf_counter()
         native = page.get_text("text")
-        if len(native.split()) and len("".join(native.split())) >= NATIVE_TEXT_MIN_CHARS:
+        has_text = len("".join(native.split())) >= NATIVE_TEXT_MIN_CHARS
+        cover = image_coverage(page)
+        """
+        Trust the (fast, exact) text layer only when the page is essentially
+        all text. If a meaningful raster image is present -- a scanned form
+        or embedded photos -- OCR the whole page so that image content is
+        captured too; PaddleOCR-VL reads the printed text and image content
+        together in reading order.
+        """
+
+        if has_text and cover < IMG_COVER_MIN:
             mode = "text-layer"
             body = native.rstrip()
         else:
@@ -128,7 +160,8 @@ def extract_pdf(pdf_path: Path) -> str:
         header = f"## Page {i} of {n_pages} [{mode}]"
         chunks.append(f"{header}\n\n{body}".rstrip())
         elapsed = time.perf_counter() - t0
-        print(f"  page {i}/{n_pages}: {mode} ({elapsed:.2f}s)", flush=True)
+        note = f", img {cover:.0%}" if mode == "ocr" and has_text else ""
+        print(f"  page {i}/{n_pages}: {mode} ({elapsed:.2f}s{note})", flush=True)
 
     doc.close()
     return "\n\n".join(chunks) + "\n"

@@ -19,14 +19,24 @@ main.py      extraction script
 
 ## How it works
 For each page in each PDF under `sample/`:
-- Read the native text layer with PyMuPDF.
-- If the page has at least `NATIVE_TEXT_MIN_CHARS` (40) non-whitespace
-  characters, keep the text-layer output -- fast and exact.
+- Read the native text layer with PyMuPDF and measure how much of the page
+  area is covered by embedded raster images.
+- Keep the text-layer output -- fast and exact -- only when the page is
+  essentially all text: at least `NATIVE_TEXT_MIN_CHARS` (40) non-whitespace
+  characters **and** less than `IMG_COVER_MIN` (5%) image coverage.
 - Otherwise rasterize at `OCR_DPI` (300) and parse the page with the
   PaddleOCR-VL-1.5 pipeline on the GPU. VL is a 0.9B vision-language model
   that emits structured markdown directly -- reading order, tables and
   formulas are reconstructed by the model, so no manual word re-ordering is
   needed.
+
+This means a page is OCR'd when it has no usable text layer **or** when it
+hides meaningful content inside images -- a scanned form placed as one big
+image behind a thin footer text layer, or a photo addendum with only field
+labels in the text layer. OCR'ing the whole rendered page captures both the
+printed text and the image content together. Pages that are genuinely all
+text (e.g. a filled digital form with only a small logo) stay on the fast
+text-layer path.
 
 Each page in the output is prefixed with a markdown heading
 `## Page N of M [text-layer|ocr]`.
