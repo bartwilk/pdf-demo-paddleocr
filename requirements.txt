@@ -30,5 +30,11 @@ paddlex[ocr]>=3.2.1
 #   pip install paddlepaddle-gpu==3.3.1 \
 #       -i https://www.paddlepaddle.org.cn/packages/stable/cu129/
 #
+# On the Mac you need the CPU build from Paddle's CPU index instead:
+#
+#   python -m pip install paddlepaddle==3.2.1 \
+#       -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+#   python -m pip install -U "paddleocr[doc-parser]"
+#
 # (use the cu126 index instead for older, pre-Blackwell GPUs). The Blackwell
 # RTX 5080 needs a CUDA 12.8+ build.

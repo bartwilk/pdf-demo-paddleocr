@@ -106,6 +106,18 @@ python main.py
 Drop input PDFs into `sample/` before running. Extracted markdown lands in
 `output/`, debug visualizations in `image_dir/vis/`.
 
+To run the OCR pipeline on the CPU instead of the GPU (slower, but no CUDA
+GPU required — useful on machines without a supported NVIDIA card), pass
+`--cpu`:
+
+```bash
+python main.py --cpu
+```
+
+With `--cpu` the GPU assertion is skipped and the PaddleOCR-VL-1.5 pipeline is
+pinned to the CPU. Note this still needs a working PaddlePaddle install; the
+CPU-only build comes from plain PyPI (`pip install paddlepaddle==3.3.1`).
+
 ### Model cache (downloaded on first run)
 The PaddleOCR-VL model weights are **not** committed to the repo. On the
 first run PaddleOCR downloads them into the project-local cache at `models/`,

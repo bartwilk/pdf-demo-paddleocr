@@ -11,6 +11,7 @@ See README.md for the pipeline overview.
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 import time
@@ -37,6 +38,10 @@ IMG_COVER_MIN = 0.05         # min page-area fraction of raster images to force 
 OCR_DPI = 300                # rasterization DPI for OCR'd pages
 SAVE_VIS = True              # write annotated JPGs for OCR'd pages
 
+# Paddle device string for the OCR pipeline ("gpu:0" or "cpu"); set by main()
+# from --cpu before any OCR page is hit. Defaults to GPU.
+DEVICE = "gpu:0"
+
 # Set lazily by get_ocr() so the model loads only if an OCR page is hit.
 _OCR = None
 
@@ -50,7 +55,8 @@ def assert_gpu() -> None:
             "This paddlepaddle build has no CUDA support. Install the GPU "
             "build matching your CUDA toolkit, e.g.:\n"
             "  pip install paddlepaddle-gpu \\\n"
-            "    -i https://www.paddlepaddle.org.cn/packages/stable/cu126/"
+            "    -i https://www.paddlepaddle.org.cn/packages/stable/cu126/\n"
+            "Or run on CPU with: python main.py --cpu"
         )
     if paddle.device.cuda.device_count() < 1:
         sys.exit("No CUDA device visible to paddle (check nvidia-smi / drivers).")
@@ -60,7 +66,10 @@ def assert_gpu() -> None:
 
 
 def get_ocr():
-    """Build the PaddleOCR-VL-1.5 document-parsing pipeline once, pinned to GPU."""
+    """Build the PaddleOCR-VL-1.5 document-parsing pipeline once.
+
+    Pinned to DEVICE ("gpu:0" by default, or "cpu" with --cpu).
+    """
     global _OCR
     if _OCR is None:
         from paddleocr import PaddleOCRVL
@@ -69,7 +78,7 @@ def get_ocr():
         # tables and formulas itself, so the classic lang/orientation knobs
         # and our manual reading_order() are no longer needed. pipeline_version
         # "v1.5" is the current default; pin it explicitly for reproducibility.
-        _OCR = PaddleOCRVL(device="gpu:0", pipeline_version="v1.5")
+        _OCR = PaddleOCRVL(device=DEVICE, pipeline_version="v1.5")
     return _OCR
 
 
@@ -168,7 +177,25 @@ def extract_pdf(pdf_path: Path) -> str:
 
 
 def main() -> None:
-    assert_gpu()
+    global DEVICE
+
+    parser = argparse.ArgumentParser(
+        description="Extract text from PDFs in sample/ to output/."
+    )
+    parser.add_argument(
+        "--cpu",
+        action="store_true",
+        help="Run the PaddleOCR-VL-1.5 pipeline on the CPU instead of the GPU "
+        "(slower, but no CUDA GPU required).",
+    )
+    args = parser.parse_args()
+
+    if args.cpu:
+        DEVICE = "cpu"
+        print("[cpu] running OCR pipeline on CPU", flush=True)
+    else:
+        assert_gpu()
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     pdfs = sorted(SAMPLE_DIR.glob("*.pdf"))
